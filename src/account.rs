@@ -3,7 +3,7 @@ use log::{debug, info};
 use once_cell::sync::Lazy;
 use routine::*;
 
-use chrono::{Datelike, Duration, Local, NaiveDateTime};
+use chrono::{Duration, NaiveDateTime};
 use rand::{thread_rng, Rng};
 use reqwest::{header::*, Client};
 use serde::{Deserialize, Serialize};
@@ -283,8 +283,8 @@ impl Account {
     }
 
     pub async fn upload_running(
-        &mut self,
-        percent: f64,
+        &self,
+        mut mileage: f64,
         datetime: NaiveDateTime,
         routefile: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
@@ -317,19 +317,10 @@ impl Account {
         ]))
             .try_into()?;
 
-        let maximum = if Local::now().naive_local().ordinal() == datetime.ordinal() {
-            (self.daily - self.day)
-                .min(self.weekly - self.week)
-                .min(self.end)
-        } else {
-            self.end.min(self.daily).min(self.weekly)
-        };
-        let mut mileage = maximum * percent / 100.;
-
         if mileage < self.start {
             return Err(format!(
-                "Effective mileage too low, minimum is {}, but your maximum is {}.",
-                self.start, maximum
+                "Effective mileage too low, minimum is {}, but your input mileage is {}.",
+                self.start, mileage
             )
             .into());
         }
