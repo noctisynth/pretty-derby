@@ -71,11 +71,11 @@
                     minimal.rustc
                   ];
               in
-              [
-                toolchain
-                iconv
-              ]
-              ++ (lib.optional stdenv.isDarwin [ darwin.apple_sdk.frameworks.SystemConfiguration ]);
+              [ toolchain ]
+              ++ (lib.optional stdenv.isDarwin [
+                darwin.apple_sdk.frameworks.SystemConfiguration
+                darwin.libiconv
+              ]);
           };
 
         formatter = pkgs.nixfmt-rfc-style;
