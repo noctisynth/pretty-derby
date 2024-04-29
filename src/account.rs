@@ -1,14 +1,16 @@
 mod routine;
 use log::{debug, info};
+use once_cell::sync::Lazy;
 use routine::*;
 
 use chrono::{Datelike, Duration, Local, NaiveDateTime};
 use rand::{thread_rng, Rng};
 use reqwest::{header::*, Client};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha1::{digest::FixedOutputReset, Digest, Sha1};
 use std::{collections::HashMap, error::Error};
+use tokio::sync::RwLock;
 
 const URL_CURRENT: &str = "https://cpes.legym.cn/education/semester/getCurrent";
 const URL_GETRUNNINGLIMIT: &str = "https://cpes.legym.cn/running/app/getRunningLimit";
@@ -19,7 +21,7 @@ const URL_UPLOADRUNNING: &str = "https://cpes.legym.cn/running/app/v2/uploadRunn
 
 const ORGANIZATION: HeaderName = HeaderName::from_static("organization");
 
-const HEADERS: [(HeaderName, &str); 9] = [
+const _HEADERS: [(HeaderName, &str); 9] = [
     (ACCEPT, "*/*"),
     (ACCEPT_ENCODING, "gzip, deflate, br"),
     (ACCEPT_LANGUAGE, "zh-CN, zh-Hans;q=0.9"),
@@ -30,17 +32,24 @@ const HEADERS: [(HeaderName, &str); 9] = [
     (ORGANIZATION, ""),
     (USER_AGENT, "Mozilla/5.0 (iPhone; CPU iPhone OS 15_4_1 like Mac OSX) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Html15Plus/1.0 (Immersed/47) uni-app"),
 ];
+static HEADERS: Lazy<RwLock<HeaderMap>> = Lazy::new(|| {
+    let mut headers = HeaderMap::new();
+    for (key, val) in _HEADERS {
+        headers.insert(key, val.parse().unwrap());
+    }
+    RwLock::new(headers)
+});
 
 const CALORIE_PER_MILEAGE: f64 = 58.3;
 const SALT: &str = "itauVfnexHiRigZ6";
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Account {
-    client: Client,
+    username: String,
+    password: String,
     daily: f64,
     day: f64,
     end: f64,
-    hasher: Sha1,
-    headers: HeaderMap,
     id: String,
     limitation: String,
     organization: String,
@@ -56,17 +65,12 @@ pub struct Account {
 
 impl Account {
     pub fn new() -> Self {
-        let mut headers = HeaderMap::new();
-        for (key, val) in HEADERS {
-            headers.insert(key, val.parse().unwrap());
-        }
         Self {
-            client: Client::new(),
+            username: String::new(),
+            password: String::new(),
             daily: 0.,
             day: 0.,
             end: 0.,
-            hasher: Sha1::new(),
-            headers,
             id: String::new(),
             limitation: String::new(),
             organization: String::new(),
@@ -81,6 +85,7 @@ impl Account {
         }
     }
 
+    #[must_use]
     pub async fn login(
         &mut self,
         username: String,
@@ -103,10 +108,11 @@ impl Account {
         username: String,
         password: String,
     ) -> Result<(), Box<dyn Error>> {
+        let client = Client::new();
         let signdigital = {
-            self.hasher
-                .update((username.to_string() + &password + "1" + SALT).as_bytes());
-            hex::encode(self.hasher.finalize_fixed_reset())
+            let mut hasher = Sha1::new();
+            hasher.update((username.to_string() + &password + "1" + SALT).as_bytes());
+            hex::encode(hasher.finalize_fixed_reset())
         };
         let json = json!({
             "entrance": "1",
@@ -117,10 +123,9 @@ impl Account {
 
         debug!("Login json: {:#?}", json);
 
-        let res = self
-            .client
+        let res = client
             .post(URL_LOGIN)
-            .headers(self.headers.clone())
+            .headers(HEADERS.read().await.clone())
             .json(&json)
             .send()
             .await?
@@ -149,19 +154,20 @@ impl Account {
         self.id = data.id;
         self.token = data.accessToken;
         self.organization = data.campusId;
-        *self.headers.get_mut(ORGANIZATION).unwrap() = self.organization.parse().unwrap();
-        *self.headers.get_mut(AUTHORIZATION).unwrap() =
+        *HEADERS.write().await.get_mut(ORGANIZATION).unwrap() = self.organization.parse().unwrap();
+        *HEADERS.write().await.get_mut(AUTHORIZATION).unwrap() =
             ("Bearer ".to_owned() + &self.token).parse().unwrap();
 
         info!("Get token successful!");
+        self.username = username;
         Ok(())
     }
 
     async fn get_current(&mut self) -> Result<(), Box<dyn Error>> {
-        let res = self
-            .client
+        let client = Client::new();
+        let res = client
             .get(URL_CURRENT)
-            .headers(self.headers.clone())
+            .headers(HEADERS.read().await.clone())
             .send()
             .await?
             .error_for_status()?;
@@ -188,10 +194,10 @@ impl Account {
 
     async fn get_version(&mut self) -> Result<(), Box<dyn Error>> {
         // Get Version
-        let res = self
-            .client
+        let client = Client::new();
+        let res = client
             .get(URL_GETVERSION)
-            .headers(self.headers.clone())
+            .headers(HEADERS.read().await.clone())
             .send()
             .await?
             .error_for_status()?;
@@ -216,15 +222,15 @@ impl Account {
     }
 
     async fn get_running_limit(&mut self) -> Result<(), Box<dyn Error>> {
+        let client = Client::new();
         let json = json!({
             "semesterId": self.semester,
         });
         debug!("Running limits json: {:#?}", json);
 
-        let res = self
-            .client
+        let res = client
             .post(URL_GETRUNNINGLIMIT)
-            .headers(self.headers.clone())
+            .headers(HEADERS.read().await.clone())
             .json(&json)
             .send()
             .await?
@@ -282,6 +288,7 @@ impl Account {
         datetime: NaiveDateTime,
         routefile: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
+        let client = Client::new();
         let headers: HeaderMap<HeaderValue> = (&HashMap::from([
             (
                 ACCEPT_ENCODING,
@@ -342,7 +349,9 @@ impl Account {
         let start_time = datetime - Duration::try_seconds(keeptime).unwrap();
 
         let signdigital = {
-            self.hasher.update(
+            let mut hasher = Sha1::new();
+            // hasher.update((self.username.to_string() + &self.password + "1" + SALT).as_bytes());
+            hasher.update(
                 (mileage.to_string()
                     + "1"
                     + &start_time.format("%Y-%m-%d %H:%M:%S").to_string()
@@ -355,7 +364,7 @@ impl Account {
                     + SALT)
                     .as_bytes(),
             );
-            hex::encode(self.hasher.finalize_fixed_reset())
+            hex::encode(hasher.finalize_fixed_reset())
         };
         let json = json!({
             "appVersion": self.version,
@@ -385,7 +394,7 @@ impl Account {
 
         debug!("Upload running json: {}", json.to_string());
 
-        self.client
+        client
             .post(URL_UPLOADRUNNING)
             .headers(headers)
             .json(&json)

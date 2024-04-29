@@ -933,6 +933,7 @@ dependencies = [
  "hex",
  "json",
  "log",
+ "once_cell",
  "rand",
  "reqwest",
  "rpassword",
