@@ -37,6 +37,9 @@ wkt = "0.10.3"
 name = "pretty_derby"
 path = "src/lib.rs"
 
+[[bin]]
+name = "main"
+
 [profile.release]
 panic = "abort" # Strip expensive panic clean-up logic
 codegen-units = 1 # Compile crates one after another so the compiler can optimize better

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha1::{digest::FixedOutputReset, Digest, Sha1};
 use std::{collections::HashMap, error::Error};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 const URL_CURRENT: &str = "https://cpes.legym.cn/education/semester/getCurrent";
 const URL_GETRUNNINGLIMIT: &str = "https://cpes.legym.cn/running/app/getRunningLimit";
@@ -39,6 +39,7 @@ static HEADERS: Lazy<RwLock<HeaderMap>> = Lazy::new(|| {
     }
     RwLock::new(headers)
 });
+static HASHER: Lazy<Mutex<Sha1>> = Lazy::new(|| Mutex::new(Sha1::new()));
 
 const CALORIE_PER_MILEAGE: f64 = 58.3;
 const SALT: &str = "itauVfnexHiRigZ6";
@@ -85,6 +86,16 @@ impl Account {
         }
     }
 
+    pub async fn get_state(&mut self) -> Result<(), Box<dyn Error>> {
+        self.get_current().await?;
+        self.get_running_limit().await?;
+        Ok(())
+    }
+
+    pub fn max_mileage(&self) -> f64 {
+        (self.daily - self.day).min(self.weekly - self.week).min(self.end)
+    }
+
     #[must_use]
     pub async fn login(
         &mut self,
@@ -95,22 +106,9 @@ impl Account {
             info!("Already logged in!");
             return Ok(());
         };
-        self.get_token(username, password).await?;
-        self.get_current().await?;
-        self.get_version().await?;
-        self.get_running_limit().await?;
-        self.logged_in = true;
-        Ok(())
-    }
-
-    async fn get_token(
-        &mut self,
-        username: String,
-        password: String,
-    ) -> Result<(), Box<dyn Error>> {
         let client = Client::new();
         let signdigital = {
-            let mut hasher = Sha1::new();
+            let mut hasher = HASHER.lock().await;
             hasher.update((username.to_string() + &password + "1" + SALT).as_bytes());
             hex::encode(hasher.finalize_fixed_reset())
         };
@@ -158,8 +156,10 @@ impl Account {
         *HEADERS.write().await.get_mut(AUTHORIZATION).unwrap() =
             ("Bearer ".to_owned() + &self.token).parse().unwrap();
 
+        self.get_version().await?;
         info!("Get token successful!");
         self.username = username;
+        self.logged_in = true;
         Ok(())
     }
 
@@ -324,6 +324,13 @@ impl Account {
             )
             .into());
         }
+        if mileage > self.end + 10. {
+            return Err(format!(
+                "Effective mileage too high, maximum is {}, but your input mileage is {}.",
+                self.end, mileage
+            )
+            .into());
+        }
 
         info!("Will running for {} miles...", mileage);
 
@@ -340,8 +347,7 @@ impl Account {
         let start_time = datetime - Duration::try_seconds(keeptime).unwrap();
 
         let signdigital = {
-            let mut hasher = Sha1::new();
-            // hasher.update((self.username.to_string() + &self.password + "1" + SALT).as_bytes());
+            let mut hasher = HASHER.lock().await;
             hasher.update(
                 (mileage.to_string()
                     + "1"

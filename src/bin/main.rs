@@ -1,14 +1,10 @@
-mod account;
-mod pretty_logger;
-mod pretty_tui;
-
-use account::Account;
 use chrono::{Local, NaiveDateTime};
 use clap::{ArgAction, CommandFactory, Parser};
 use clap_complete::{generate, Shell};
 use log::{debug, error, Level, LevelFilter};
-use pretty_logger::{CliLogger, TuiLogger};
-use pretty_tui::Tui;
+use pretty_derby::account::Account;
+use pretty_derby::pretty_logger::{CliLogger, TuiLogger};
+use pretty_derby::pretty_tui::Tui;
 use std::{error::Error, io, sync::Arc};
 use tokio::{sync::Mutex, task};
 use tui::backend::CrosstermBackend;
@@ -137,9 +133,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     error!("Login failed! Message: {:?}", e);
                     return;
                 }
+                if let Err(e) = account.get_state().await {
+                    error!("Get state failed! Message: {:?}", e);
+                    return;
+                }
+                let mileage = account.max_mileage() * percent as f64 / 100.0;
                 if let Err(e) = account
                     .upload_running(
-                        percent.into(),
+                        mileage,
                         match NaiveDateTime::parse_from_str(&time, "%Y-%m-%d %H:%M:%S") {
                             Ok(t) => t,
                             Err(e) => {
