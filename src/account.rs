@@ -44,7 +44,7 @@ static HASHER: Lazy<Mutex<Sha1>> = Lazy::new(|| Mutex::new(Sha1::new()));
 const CALORIE_PER_MILEAGE: f64 = 58.3;
 const SALT: &str = "itauVfnexHiRigZ6";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Account {
     username: String,
     password: String,
@@ -61,14 +61,13 @@ pub struct Account {
     version: String,
     week: f64,
     weekly: f64,
-    logged_in: bool,
 }
 
 impl Account {
-    pub fn new() -> Self {
+    pub fn new(username: String, password: String) -> Self {
         Self {
-            username: String::new(),
-            password: String::new(),
+            username,
+            password,
             daily: 0.,
             day: 0.,
             end: 0.,
@@ -82,10 +81,15 @@ impl Account {
             version: String::new(),
             week: 0.,
             weekly: 0.,
-            logged_in: false,
         }
     }
 
+    pub fn profile(&mut self, username: String, password: String) {
+        self.username = username;
+        self.password = password;
+    }
+
+    #[must_use]
     pub async fn get_state(&mut self) -> Result<(), Box<dyn Error>> {
         self.get_current().await?;
         self.get_running_limit().await?;
@@ -93,30 +97,24 @@ impl Account {
     }
 
     pub fn max_mileage(&self) -> f64 {
-        (self.daily - self.day).min(self.weekly - self.week).min(self.end)
+        (self.daily - self.day)
+            .min(self.weekly - self.week)
+            .min(self.end)
     }
 
     #[must_use]
-    pub async fn login(
-        &mut self,
-        username: String,
-        password: String,
-    ) -> Result<(), Box<dyn Error>> {
-        if self.logged_in {
-            info!("Already logged in!");
-            return Ok(());
-        };
+    pub async fn login(&mut self) -> Result<(), Box<dyn Error>> {
         let client = Client::new();
         let signdigital = {
             let mut hasher = HASHER.lock().await;
-            hasher.update((username.to_string() + &password + "1" + SALT).as_bytes());
+            hasher.update((self.username.to_string() + &self.password + "1" + SALT).as_bytes());
             hex::encode(hasher.finalize_fixed_reset())
         };
         let json = json!({
             "entrance": "1",
-            "password": &password.to_string(),
+            "password": &self.password.to_string(),
             "signDigital": &signdigital.to_string(),
-            "userName": &username.to_string(),
+            "userName": &self.username.to_string(),
         });
 
         debug!("Login json: {:#?}", json);
@@ -158,8 +156,6 @@ impl Account {
 
         self.get_version().await?;
         info!("Get token successful!");
-        self.username = username;
-        self.logged_in = true;
         Ok(())
     }
 

@@ -69,9 +69,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let username = cli.username.unwrap();
         let password = rpassword::prompt_password(format!("Password for {}: ", username))?;
         let mileage = cli.mileage.unwrap();
-        let mut account = Account::new();
+        let mut account = Account::new(username, password);
 
-        if let Err(e) = account.login(username, password).await {
+        if let Err(e) = account.login().await {
             error!("Login failed! Message: {:?}", e);
             return Ok(());
         }
@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         );
 
-        let account_arc = Arc::new(Mutex::new(Account::new()));
+        let account_arc = Arc::new(Mutex::new(Account::default()));
         tui.welcome()?;
         let mut t = tui.main()?;
         loop {
@@ -129,7 +129,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     error!("Mileage cannot be zero!");
                     return;
                 }
-                if let Err(e) = account.login(username, password).await {
+                account.profile(username, password);
+                if let Err(e) = account.login().await {
                     error!("Login failed! Message: {:?}", e);
                     return;
                 }
