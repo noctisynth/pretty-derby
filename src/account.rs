@@ -44,7 +44,7 @@ static HASHER: Lazy<Mutex<Sha1>> = Lazy::new(|| Mutex::new(Sha1::new()));
 const CALORIE_PER_MILEAGE: f64 = 58.3;
 const SALT: &str = "itauVfnexHiRigZ6";
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Account {
     username: String,
     password: String,
@@ -65,28 +65,13 @@ pub struct Account {
 
 impl Account {
     pub fn new(username: String, password: String) -> Self {
-        Self {
-            username,
-            password,
-            daily: 0.,
-            day: 0.,
-            end: 0.,
-            id: String::new(),
-            limitation: String::new(),
-            organization: String::new(),
-            scoring: 0,
-            semester: String::new(),
-            start: 0.,
-            token: String::new(),
-            version: String::new(),
-            week: 0.,
-            weekly: 0.,
-        }
+        Self::default().profile(username, password).to_owned()
     }
 
-    pub fn profile(&mut self, username: String, password: String) {
+    pub fn profile(&mut self, username: String, password: String) -> &mut Self {
         self.username = username;
         self.password = password;
+        self
     }
 
     #[must_use]
