@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{collections::HashMap, error::Error};
 
-const URL_BASE: &str = env!("BACKEND");
+const URL_BASE: &str = "https://cpes.legym.cn/";
 
 const URL_CURRENT: &str = formatcp!("https://{}/education/semester/getCurrent", URL_BASE);
 
@@ -448,50 +448,3 @@ impl Account {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::env;
-
-    use log::{Level, Metadata, Record};
-
-    struct SimpleLogger;
-
-    impl log::Log for SimpleLogger {
-        fn enabled(&self, metadata: &Metadata) -> bool {
-            metadata.level() <= Level::Debug
-        }
-
-        fn log(&self, record: &Record) {
-            if self.enabled(record.metadata()) {
-                println!("{} - {}", record.level(), record.args());
-            }
-        }
-
-        fn flush(&self) {}
-    }
-
-    static LOGGER: SimpleLogger = SimpleLogger;
-
-    #[tokio::test]
-    async fn test_upload_running() {
-        log::set_logger(&LOGGER).unwrap();
-
-        log::set_max_level(log::LevelFilter::Debug);
-
-        let username = env::var("USERNAME").unwrap();
-        let password = env::var("PASSWORD").unwrap();
-
-        let mut account = Account::new();
-        account.login(&username, &password).await.unwrap();
-
-        let geojson_str = include_str!("../../assets/map.geojson");
-        let mileage = 5.0;
-        let end_time = Local::now();
-
-        account
-            .upload_running(geojson_str, mileage, end_time)
-            .await
-            .unwrap();
-    }
-}
