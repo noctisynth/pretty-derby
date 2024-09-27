@@ -1,5 +1,5 @@
 [package]
-name = "lib"
+name = "pretty-derby"
 version = "0.2.0"
 edition = "2021"
 license = "AGPL-3.0"

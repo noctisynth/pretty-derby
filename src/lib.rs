@@ -23,7 +23,7 @@ use log::{debug, info};
 use regex::Regex;
 use routine::*;
 
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{Duration, NaiveDateTime, Utc};
 use rand::{thread_rng, Rng};
 use reqwest::{header::*, Client, StatusCode};
 use security::{decode_ns, sign_run_data, UploadRunningInfoBuilder};
@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{collections::HashMap, error::Error};
 
-const URL_BASE: &str = "https://cpes.legym.cn/";
+const URL_BASE: &str = "cpes.legym.cn";
 
 const URL_CURRENT: &str = formatcp!("https://{}/education/semester/getCurrent", URL_BASE);
 
@@ -337,7 +337,7 @@ impl Account {
         &mut self,
         geojson_str: &str,
         mileage: f64,
-        end_time: DateTime<Local>,
+        end_time: NaiveDateTime,
     ) -> Result<(), Box<dyn Error>> {
         let headers: HeaderMap<HeaderValue> = (&HashMap::<HeaderName, HeaderValue>::from([
             (HOST, URL_BASE.parse()?),
@@ -447,4 +447,3 @@ impl Account {
         Ok(())
     }
 }
-
