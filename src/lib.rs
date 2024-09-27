@@ -364,13 +364,12 @@ impl Account {
         ]))
             .try_into()?;
 
-        let mut mileage = mileage
-            .min(self.daily - self.day)
-            .min(self.weekly - self.week)
-            .min(self.end);
+        let mut mileage = mileage.min(self.weekly - self.week).min(self.end);
 
         if mileage < self.start {
-            return Err(String::from("Effective mileage too low").into());
+            return Err(
+                format!("Effective mileage {} too low since {}", mileage, self.start).into(),
+            );
         }
 
         let keep_time = {
